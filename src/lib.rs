@@ -50,4 +50,30 @@ impl TrayItem {
     pub fn inner_mut(&mut self) -> &mut api::TrayItemImpl {
         &mut self.0
     }
+
+    // TODO
+    /*pub fn set_leftclick_callback<F>(&mut self, cb: F)
+    where
+        F: Fn() + Send + 'static,
+    {
+        self.0.set_leftclick_callback(cb);
+    }
+    pub fn set_rightclick_callback<F>(&mut self, cb: F)
+    where
+        F: Fn() + Send + 'static,
+    {
+        self.0.set_rightclick_callback(cb);
+    }
+    pub fn set_doubleclick_callback<F>(&mut self, cb: F)
+    where
+        F: Fn() + Send + 'static,
+    {
+        self.0.set_doubleclick_callback(cb);
+    }
+    pub fn set_middleclick_callback<F>(&mut self, cb: F)
+    where
+        F: Fn() + Send + 'static,
+    {
+        self.0.set_middleclick_callback(cb);
+    }*/
 }

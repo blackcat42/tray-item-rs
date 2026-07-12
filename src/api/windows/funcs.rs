@@ -10,9 +10,9 @@ use windows_sys::Win32::{
             GetMenuItemID, GetMessageW, PostQuitMessage, RegisterClassW, SetForegroundWindow,
             SetMenuInfo, TrackPopupMenu, TranslateMessage, CW_USEDEFAULT, MENUINFO,
             MIM_APPLYTOSUBMENUS, MIM_STYLE, MNS_NOTIFYBYPOS, MSG, TPM_BOTTOMALIGN, TPM_LEFTALIGN,
-            TPM_LEFTBUTTON, WM_LBUTTONUP, WM_MENUCOMMAND, WM_QUIT, WM_RBUTTONUP, WM_USER,
-            WNDCLASSW, WS_OVERLAPPEDWINDOW, WM_CREATE, HICON, IDI_APPLICATION, LoadIconW, 
-            RegisterWindowMessageW,
+            TPM_LEFTBUTTON, WM_LBUTTONDBLCLK, WM_MBUTTONUP, WM_LBUTTONUP, WM_MENUCOMMAND, WM_QUIT,
+            WM_RBUTTONUP, WM_USER, WNDCLASSW, WS_OVERLAPPEDWINDOW, WM_CREATE, HICON, IDI_APPLICATION,
+            LoadIconW, RegisterWindowMessageW,
         },
     },
 };
@@ -49,13 +49,18 @@ pub(crate) unsafe extern "system" fn window_proc(
             if let Some(stash) = stash {
                 let menu_id = GetMenuItemID(stash.info.hmenu, w_param as i32) as i32;
                 if menu_id != -1 {
-                    stash.tx.send(WindowsTrayEvent(menu_id as u32)).ok();
+                    stash.tx.send(WindowsTrayEvent::MenuEvent(menu_id as u32)).ok();
                 }
             }
         });
     }
 
-    if msg == WM_USER + 1 && (l_param as u32 == WM_LBUTTONUP || l_param as u32 == WM_RBUTTONUP) {
+    if msg == WM_USER + 1 && (
+        l_param as u32 == WM_LBUTTONUP 
+        || l_param as u32 == WM_RBUTTONUP 
+        || l_param as u32 == WM_LBUTTONDBLCLK 
+        || l_param as u32 == WM_MBUTTONUP
+    ) {
         let mut point = POINT { x: 0, y: 0 };
         if GetCursorPos(&mut point) == 0 {
             return 1;
@@ -67,15 +72,27 @@ pub(crate) unsafe extern "system" fn window_proc(
             let stash = stash.borrow();
             let stash = stash.as_ref();
             if let Some(stash) = stash {
-                TrackPopupMenu(
-                    stash.info.hmenu,
-                    TPM_LEFTBUTTON | TPM_BOTTOMALIGN | TPM_LEFTALIGN,
-                    point.x,
-                    point.y,
-                    0,
-                    h_wnd,
-                    ptr::null(),
-                );
+                if l_param as u32 == WM_LBUTTONDBLCLK {
+                    stash.tx.send(WindowsTrayEvent::IconEvent(2 as u32)).ok();
+                } else if l_param as u32 == WM_LBUTTONUP {
+                    stash.tx.send(WindowsTrayEvent::IconEvent(0 as u32)).ok();
+                } else if l_param as u32 == WM_RBUTTONUP {
+                    stash.tx.send(WindowsTrayEvent::IconEvent(1 as u32)).ok();
+                } else if l_param as u32 == WM_MBUTTONUP {
+                    stash.tx.send(WindowsTrayEvent::IconEvent(3 as u32)).ok();
+                }
+
+                if l_param as u32 == WM_RBUTTONUP {
+                    TrackPopupMenu(
+                        stash.info.hmenu,
+                        TPM_LEFTBUTTON | TPM_BOTTOMALIGN | TPM_LEFTALIGN,
+                        point.x,
+                        point.y,
+                        0,
+                        h_wnd,
+                        ptr::null(),
+                    );
+                }
             }
         });
     }

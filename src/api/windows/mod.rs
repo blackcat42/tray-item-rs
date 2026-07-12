@@ -40,6 +40,10 @@ pub struct TrayItemWindows {
     windows_loop: Option<thread::JoinHandle<()>>,
     event_loop: Option<thread::JoinHandle<()>>,
     event_tx: Sender<WindowsTrayEvent>,
+    leftclick_callback: Arc<Mutex<CallBackEntry>>,
+    rightclick_callback: Arc<Mutex<CallBackEntry>>,
+    doubleclick_callback: Arc<Mutex<CallBackEntry>>,
+    middleclick_callback: Arc<Mutex<CallBackEntry>>,
 }
 
 impl TrayItemWindows {
@@ -48,18 +52,52 @@ impl TrayItemWindows {
         let (event_tx, event_rx) = channel::<WindowsTrayEvent>();
 
         let entries_clone = Arc::clone(&entries);
-        let event_loop = thread::spawn(move || loop {
-            if let Ok(v) = event_rx.recv() {
-                if v.0 == u32::MAX {
-                    break;
-                }
 
-                padlock::mutex_lock(&entries_clone, |ents: &mut Vec<CallBackEntry>| match &ents
-                    [v.0 as usize]
-                {
-                    Some(f) => f(),
-                    None => (),
-                })
+        let leftclick_callback: Arc<Mutex<CallBackEntry>> = Arc::new(Mutex::new(None));
+        let rightclick_callback: Arc<Mutex<CallBackEntry>> = Arc::new(Mutex::new(None));
+        let doubleclick_callback: Arc<Mutex<CallBackEntry>> = Arc::new(Mutex::new(None));
+        let middleclick_callback: Arc<Mutex<CallBackEntry>> = Arc::new(Mutex::new(None));
+        let l_c_clone = Arc::clone(&leftclick_callback);
+        let r_c_clone = Arc::clone(&rightclick_callback);
+        let dbl_c_clone = Arc::clone(&doubleclick_callback);
+        let m_c_clone = Arc::clone(&middleclick_callback);
+
+
+        let event_loop = thread::spawn(move || loop {
+            if let Ok(item) = event_rx.recv() {
+                match item {
+                    WindowsTrayEvent::IconEvent(v) => {
+                        let mutex = match v {
+                            0 => Some(&l_c_clone),
+                            1 => Some(&r_c_clone),
+                            2 => Some(&dbl_c_clone),
+                            3 => Some(&m_c_clone),
+                            _ => None,
+                        };
+                        if let Some(m) = mutex {
+                            padlock::mutex_lock(
+                                &m, 
+                                |cllbck: &mut CallBackEntry| match &cllbck
+                                {
+                                    Some(f) => f(),
+                                    None => (),
+                                }
+                            )
+                        }
+                    }
+                    
+                    WindowsTrayEvent::MenuEvent(v) => {
+                        if v == u32::MAX {
+                            break;
+                        }
+                        padlock::mutex_lock(&entries_clone, |ents: &mut Vec<CallBackEntry>| match &ents
+                            [v as usize]
+                        {
+                            Some(f) => f(),
+                            None => (),
+                        })
+                    }
+                }
             }
         });
 
@@ -102,12 +140,45 @@ impl TrayItemWindows {
             windows_loop: Some(windows_loop),
             event_loop: Some(event_loop),
             event_tx,
+            leftclick_callback,
+            rightclick_callback,
+            doubleclick_callback,
+            middleclick_callback
         };
 
         w.set_tooltip(title)?;
         w.set_icon(icon)?;
 
         Ok(w)
+    }
+
+    pub fn set_leftclick_callback<F>(&mut self, cb: F)
+    where
+        F: Fn() + Send + 'static,
+    {
+        let mut leftclick_callback = self.leftclick_callback.lock().unwrap();
+        *leftclick_callback = Some(Box::new(cb));
+    }
+    pub fn set_rightclick_callback<F>(&mut self, cb: F)
+    where
+        F: Fn() + Send + 'static,
+    {
+        let mut rightclick_callback = self.rightclick_callback.lock().unwrap();
+        *rightclick_callback = Some(Box::new(cb));
+    }
+    pub fn set_doubleclick_callback<F>(&mut self, cb: F)
+    where
+        F: Fn() + Send + 'static,
+    {
+        let mut doubleclick_callback = self.doubleclick_callback.lock().unwrap();
+        *doubleclick_callback = Some(Box::new(cb));
+    }
+    pub fn set_middleclick_callback<F>(&mut self, cb: F)
+    where
+        F: Fn() + Send + 'static,
+    {
+        let mut middleclick_callback = self.middleclick_callback.lock().unwrap();
+        *middleclick_callback = Some(Box::new(cb));
     }
 
     pub fn set_icon(&self, icon: IconSource) -> Result<(), TIError> {
@@ -323,7 +394,7 @@ impl TrayItemWindows {
         }
 
         if let Some(t) = self.event_loop.take() {
-            self.event_tx.send(WindowsTrayEvent(u32::MAX)).ok();
+            self.event_tx.send(WindowsTrayEvent::MenuEvent(u32::MAX)).ok();
             t.join().ok();
         }
     }
